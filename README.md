@@ -1,3 +1,6 @@
+admin : nafayahmad804@gmail.com(same is the password)
+support : support1@gmail.com
+user :  user@gmail.com
 # Taakra - Premier Competition Platform
 
 > A comprehensive web application for discovering, managing, and participating in competitions with real-time chat, AI assistance, and advanced features.

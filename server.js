@@ -16,12 +16,13 @@ const io = new Server(server, {
 const PORT = 3000;
 
 // Store connected users
-const users = new Map();
-const supportStaff = new Map();
+const users = new Map(); // socket.id => { id, name, email, role }
+const supportStaff = new Map(); // socket.id => userId
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
+    // User joins
     socket.on('user:join', (data) => {
         users.set(socket.id, {
             id: data.userId,
@@ -30,6 +31,7 @@ io.on('connection', (socket) => {
             role: data.role
         });
 
+        // Support/admin users join 'support' room
         if (data.role === 'support' || data.role === 'admin') {
             supportStaff.set(socket.id, data.userId);
             socket.join('support');
@@ -38,6 +40,7 @@ io.on('connection', (socket) => {
         socket.emit('connection:success', { message: 'Connected successfully' });
     });
 
+    // Send message
     socket.on('message:send', (data) => {
         const sender = users.get(socket.id);
         if (!sender) return;
@@ -52,7 +55,7 @@ io.on('connection', (socket) => {
         };
 
         if (sender.role === 'support' || sender.role === 'admin') {
-            // send directly to target user
+            // Send to specific user
             const targetSocket = Array.from(users.entries()).find(
                 ([sid, user]) => user.id === data.targetUserId
             )?.[0];
@@ -61,30 +64,46 @@ io.on('connection', (socket) => {
                 io.to(targetSocket).emit('message:receive', message);
             }
         } else {
-            // send to support room
+            // Send to support room
             io.to('support').emit('message:receive', message);
         }
 
+        // Confirm to sender
         socket.emit('message:sent', message);
     });
 
+    // Typing indicator
     socket.on('typing:start', (data) => {
-        if (data.targetRoom) {
-            socket.to(data.targetRoom).emit('typing:show', {
-                userId: users.get(socket.id)?.id,
-                userName: users.get(socket.id)?.name
-            });
+        const sender = users.get(socket.id);
+        if (!sender) return;
+
+        if (sender.role === 'support' || sender.role === 'admin') {
+            // Support typing → send to target user
+            const targetSocket = Array.from(users.entries()).find(
+                ([sid, user]) => user.id === data.targetUserId
+            )?.[0];
+            if (targetSocket) socket.to(targetSocket).emit('typing:show', { userName: sender.name });
+        } else {
+            // User typing → send to support room
+            socket.to('support').emit('typing:show', { userName: sender.name });
         }
     });
 
     socket.on('typing:stop', (data) => {
-        if (data.targetRoom) {
-            socket.to(data.targetRoom).emit('typing:hide', {
-                userId: users.get(socket.id)?.id
-            });
+        const sender = users.get(socket.id);
+        if (!sender) return;
+
+        if (sender.role === 'support' || sender.role === 'admin') {
+            const targetSocket = Array.from(users.entries()).find(
+                ([sid, user]) => user.id === data.targetUserId
+            )?.[0];
+            if (targetSocket) socket.to(targetSocket).emit('typing:hide');
+        } else {
+            socket.to('support').emit('typing:hide');
         }
     });
 
+    // Disconnect
     socket.on('disconnect', () => {
         users.delete(socket.id);
         supportStaff.delete(socket.id);
